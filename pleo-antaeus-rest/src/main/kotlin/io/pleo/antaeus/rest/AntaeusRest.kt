@@ -84,9 +84,9 @@ class AntaeusRest(
 
                 path("billing") {
                     path("schedulePays") {
-                        // URL: /rest/v1/customers
+                        // URL: /rest/billing/schedulePays
                         get {
-                            billingService.schedulePays()
+                            it.result(billingService.schedulePays())
                         }
                     }
                 }
