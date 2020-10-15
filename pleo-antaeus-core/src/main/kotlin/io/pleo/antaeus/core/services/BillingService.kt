@@ -65,19 +65,17 @@ class BillingService(
         return date
     }
 
-    fun schedulePays() : BSResult {
+    fun schedulePays( alive: Boolean) : BSResult {
         val bs: BSResult = BSResult()
-        if (!isTimerSet) {
-            bs.nextBillDate = setNextPaymentsTimer().toString()
-            bs.cronEvtSet = isTimerSet
+        if (alive) {
+            if (!isTimerSet) {
+                bs.nextBillDate = setNextPaymentsTimer().toString()
+                bs.cronEvtSet = isTimerSet
+            }
+        } else if (!alive) {
+            timer.cancel()
+            isTimerSet = false
         }
-        return bs
-    }
-
-    fun unSchedulePays() : BSResult  {
-        val bs: BSResult = BSResult()
-        timer.cancel()
-        isTimerSet = false
         return bs
     }
 }
