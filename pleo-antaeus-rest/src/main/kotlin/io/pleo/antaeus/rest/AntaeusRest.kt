@@ -83,10 +83,16 @@ class AntaeusRest(
                 }
 
                 path("billing") {
-                    path("schedulePays") {
-                        // URL: /rest/billing/schedulePays
+                    path("set") {
+                        // URL: /rest/billing/set
                         get {
-                            it.result(billingService.schedulePays())
+                            it.json(billingService.schedulePays())
+                        }
+                    }
+                    path("unset") {
+                        // URL: /rest/billing/unset
+                        get {
+                            it.json(billingService.unSchedulePays())
                         }
                     }
                 }

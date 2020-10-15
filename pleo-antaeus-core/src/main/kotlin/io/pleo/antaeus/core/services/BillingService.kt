@@ -16,7 +16,9 @@ class BillingService(
     private val customerService: CustomerService,
     private val invoiceService: InvoiceService
 ) {
+    class BSResult(var nextBillDate: String = "", var cronEvtSet: Boolean = false)
     val invoices: Queue<Invoice> = LinkedList<Invoice>()
+    var isTimerSet: Boolean = false
     var timer: Timer = Timer(true)
 
     internal fun getNextBillingDate() : Date {
@@ -43,14 +45,18 @@ class BillingService(
             }
     }
 
-    internal fun setNextPaymentsTimer() {
+    internal fun setNextPaymentsTimer() : Date {
+        val date: Date = getNextBillingDate()
         // Create new Timer
         timer = Timer("PayTimerThread", true)
         // timer.schedule(3000) {processPayments()}
-        timer.schedule(getNextBillingDate()) {processPayments()}
+        timer.schedule(date) {processPayments()}
+        isTimerSet = true
+        return date
     }
 
-    fun schedulePays() : Queue<Invoice>  {
+    fun schedulePays() : BSResult {
+        val bs: BSResult = BSResult()
         // Load Invoices
         if (invoices.isEmpty()) {
             val invoiceIterator = invoiceService.fetchAll().iterator()
@@ -58,8 +64,17 @@ class BillingService(
                 invoices.add(invoiceIterator.next())
             }
         }
-        setNextPaymentsTimer()
-        return invoices
+        if (!isTimerSet) {
+            bs.nextBillDate = setNextPaymentsTimer().toString()
+            bs.cronEvtSet = isTimerSet
+        }
+        return bs
     }
 
+    fun unSchedulePays() : BSResult  {
+        val bs: BSResult = BSResult()
+        timer.cancel()
+        isTimerSet = false
+        return bs
+    }
 }
