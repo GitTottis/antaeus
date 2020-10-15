@@ -28,7 +28,7 @@ class BillingService(
             it.set(Calendar.HOUR_OF_DAY, 12)
         }
 
-        // Check if its on a weekend
+        // Checking if on a weekend
         if (Calendar.SATURDAY == cal.get(Calendar.DAY_OF_WEEK)) {
             cal.add(Calendar.DAY_OF_WEEK, 2);
         } else if (Calendar.SUNDAY == cal.get(Calendar.DAY_OF_WEEK)) {
@@ -40,25 +40,23 @@ class BillingService(
     // Flow of Invoices to be consumed by the PaymentProvider
     private fun emitCustomerInvoices() = invoiceService.fetchAll().asFlow()
     internal fun processPayments() {
-            try {
-                runBlocking {
-                    emitCustomerInvoices()
-                        .filter {customerService.fetch(it.customerId) is Customer }
-                        .collect {
-                            println(it)
-                            paymentProvider.charge(it)
-                        }
-                }
-                println("Next Billing Round will run on: " + getNextBillingDate())
-            } finally {
-                setNextPaymentsTimer()
+        try {
+            runBlocking {
+                emitCustomerInvoices()
+                    .filter { customerService.fetch(it.customerId) is Customer }
+                    .collect {
+                        paymentProvider.charge(it)
+                    }
             }
+        } finally {
+            setNextPaymentsTimer()
+        }
     }
 
     internal fun setNextPaymentsTimer() : Date {
         val date: Date = getNextBillingDate()
         
-        // Create new Timer Thread
+        // Creates new Timer Thread
         timer = Timer("PayTimerThread", true)
         timer.schedule(date) {processPayments()}
         isTimerSet = true
