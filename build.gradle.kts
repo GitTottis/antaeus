@@ -15,7 +15,7 @@ allprojects {
     }
 
     tasks.withType<KotlinCompile>().configureEach {
-        kotlinOptions.jvmTarget = "11"
+        kotlinOptions.jvmTarget = "1.8"
     }
 
     tasks.withType<Test> {
