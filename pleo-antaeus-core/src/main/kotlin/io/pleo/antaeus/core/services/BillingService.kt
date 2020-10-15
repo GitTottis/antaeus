@@ -1,15 +1,16 @@
 package io.pleo.antaeus.core.services
 
-import java.util.*
-import java.util.Queue
-import java.util.LinkedList
 
 import kotlin.concurrent.schedule
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.runBlocking
+import java.util.*
 
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.core.services.CustomerService
 import io.pleo.antaeus.core.services.InvoiceService
 import io.pleo.antaeus.models.Invoice
+import io.pleo.antaeus.models.Customer
 
 class BillingService(
     private val paymentProvider: PaymentProvider,
@@ -17,7 +18,6 @@ class BillingService(
     private val invoiceService: InvoiceService
 ) {
     class BSResult(var nextBillDate: String = "", var cronEvtSet: Boolean = false)
-    val invoices: Queue<Invoice> = LinkedList<Invoice>()
     var isTimerSet: Boolean = false
     var timer: Timer = Timer(true)
 
@@ -37,8 +37,18 @@ class BillingService(
         return cal.getTime();
     }
     
+    // Flow of Invoices to be consumed by the PaymentProvider
+    private fun emitCustomerInvoices() = invoiceService.fetchAll().asFlow()
     internal fun processPayments() {
             try {
+                runBlocking {
+                    emitCustomerInvoices()
+                        .filter {customerService.fetch(it.customerId) is Customer }
+                        .collect {
+                            println(it)
+                            paymentProvider.charge(it)
+                        }
+                }
                 println("Next Billing Round will run on: " + getNextBillingDate())
             } finally {
                 setNextPaymentsTimer()
@@ -47,9 +57,9 @@ class BillingService(
 
     internal fun setNextPaymentsTimer() : Date {
         val date: Date = getNextBillingDate()
-        // Create new Timer
+        
+        // Create new Timer Thread
         timer = Timer("PayTimerThread", true)
-        // timer.schedule(3000) {processPayments()}
         timer.schedule(date) {processPayments()}
         isTimerSet = true
         return date
@@ -57,13 +67,6 @@ class BillingService(
 
     fun schedulePays() : BSResult {
         val bs: BSResult = BSResult()
-        // Load Invoices
-        if (invoices.isEmpty()) {
-            val invoiceIterator = invoiceService.fetchAll().iterator()
-            while(invoiceIterator.hasNext()) {
-                invoices.add(invoiceIterator.next())
-            }
-        }
         if (!isTimerSet) {
             bs.nextBillDate = setNextPaymentsTimer().toString()
             bs.cronEvtSet = isTimerSet
