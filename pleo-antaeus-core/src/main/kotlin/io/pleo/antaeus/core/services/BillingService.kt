@@ -1,79 +1,180 @@
 package io.pleo.antaeus.core.services
 
-
 import kotlin.concurrent.schedule
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
-import java.util.*
 
 import io.pleo.antaeus.core.external.PaymentProvider
 import io.pleo.antaeus.core.services.CustomerService
 import io.pleo.antaeus.core.services.InvoiceService
+import io.pleo.antaeus.core.util.*
+import io.pleo.antaeus.core.exceptions.*
 import io.pleo.antaeus.models.Invoice
+import io.pleo.antaeus.models.InvoiceStatus
 import io.pleo.antaeus.models.Customer
 
+/**
+    Implements the BillingService Class
+ */
 class BillingService(
     private val paymentProvider: PaymentProvider,
     private val customerService: CustomerService,
     private val invoiceService: InvoiceService
 ) {
+    /* Use internal Logging Mechanism */
+    private val logger = CoreLogger()
+
+    /* Use util Scheduler Class */
+    private val scheduler = Scheduler()
+
+    /* Billing Service Response */
     class BSResult(var nextBillDate: String = "", var cronEvtSet: Boolean = false)
-    var isTimerSet: Boolean = false
-    var timer: Timer = Timer(true)
 
-    internal fun getNextBillingDate() : Date {
-        val cal = Calendar.getInstance().also {
-            it.set(Calendar.MONTH, it.get(Calendar.MONTH)+1) // next Month
-            it.set(Calendar.DAY_OF_MONTH, it.getActualMinimum(Calendar.DAY_OF_MONTH))
-            it.set(Calendar.HOUR_OF_DAY, 12)
-        }
+    /* Are there missing payments */
+    private var missingPayments: Boolean = false
 
-        // Checking if on a weekend
-        if (Calendar.SATURDAY == cal.get(Calendar.DAY_OF_WEEK)) {
-            cal.add(Calendar.DAY_OF_WEEK, 2);
-        } else if (Calendar.SUNDAY == cal.get(Calendar.DAY_OF_WEEK)) {
-            cal.add(Calendar.DAY_OF_WEEK, 1);
-        }
-        return cal.getTime();
-    }
-    
-    // Flow of Invoices to be consumed by the PaymentProvider
+    /* Flow of Invoices to be consumed by the PaymentProvider */
     private fun emitCustomerInvoices() = invoiceService.fetchAll().asFlow()
-    internal fun processPayments() {
+
+    /* Flow of Unpaid Invoices to be consumed by the PaymentProvider */
+    private fun emitCustomerPendingInvoices() = invoiceService.fetchAllNotPaid().asFlow()
+
+    /**
+    * This function charges all the invoices 
+    * 
+    * @throws PaymentsProcessException when process stops unexpectedly
+    */
+    private fun processAllPayments() {
+        missingPayments = false
         try {
             runBlocking {
+                logger.info("BS: Currently paying the monthly subscription payments")
                 emitCustomerInvoices()
-                    .filter { customerService.fetch(it.customerId) is Customer }
                     .collect {
-                        paymentProvider.charge(it)
+                        processPayment(it)
                     }
             }
-        } finally {
-            setNextPaymentsTimer()
+        }
+        catch (e: PaymentsProcessException) {
+            logger.error(e, "BS: Payments process not finished")
+        }
+        finally {
+            logger.info("BS: Subscriptions paid")
+            scheduler.start().schedule( scheduler.getNextBillingDate() ) {processAllPayments()}
         }
     }
 
-    internal fun setNextPaymentsTimer() : Date {
-        val date: Date = getNextBillingDate()
-        
-        // Creates new Timer Thread
-        timer = Timer("PayTimerThread", true)
-        timer.schedule(date) {processPayments()}
-        isTimerSet = true
-        return date
+    /**
+    * This function tries to force the payment of any PENDING transactions remaining
+    * among the invoices 
+    * 
+    * @throws PaymentsProcessException when process stops unexpectedly
+    */
+    private fun processAllPendingPayments() {
+        missingPayments = false
+        try {
+            runBlocking {
+                logger.info("BS: Re-trying this month's unpaid subscriptions")
+                emitCustomerPendingInvoices()
+                    .collect {
+                        processPayment(it)
+                    }
+            }
+        }
+        catch (e: PaymentsProcessException) {
+            logger.error(e, "BS: Payments process not finished")
+        }
+        finally {
+            logger.info("BS: Pending subscriptions were paid")
+        }
     }
 
-    fun schedulePays( alive: Boolean) : BSResult {
+
+    /**
+    * This function tries to process a single invoice payment. It manages the errors
+    * that can potentially be thrown by the PaymentProvider Class and log them. Error
+    * handlin is crucial here since we do not want the process to interrupt 
+    *
+    * Errors Handled:
+    * CustomerNotFoundException when invalid customer is set in the Invoice
+    * CurrencyMismatchException when invalid currency is set in the Invoice
+    * NetworkException when Network error occured when charging the client 
+    *
+    * @param  Invoice to be processed
+    * @return Boolean true  : payment was successfully processed
+    *                 false : payment was not processed
+    */
+    fun processPayment(invoice: Invoice) : Boolean {
+        var processed: Boolean = false
+        try {
+            paymentProvider.charge(invoice)
+            processed = true
+        }
+        catch (e: CustomerNotFoundException) {
+            logger.error(e, "BS: Customer ${invoice.customerId} not found")
+        }
+        catch (e: CurrencyMismatchException) {
+            logger.error(e, "BS: Currency ${invoice.amount.currency} is not valid")
+        }
+        catch (e: NetworkException) {
+            logger.error(e, "BS: Network is down")
+        }
+        finally {
+            if (!missingPayments && invoice.status != InvoiceStatus.PAID) {
+                missingPayments = true
+            }
+        }
+        return processed
+    }
+
+
+    /**
+    * (Overloaded function) 
+    *
+    * @see BillingService#processPayment
+    * @param  Integer Invoice Id to be processed
+    */
+    fun processPayment(invoiceId: Int) : Boolean {
+        return processPayment(invoiceService.fetch(invoiceId))
+    }
+
+
+    /**
+    * This is the entry point of the service instance to serve payments. It takes
+    * a parameter that enables or disables the scheduling of the payments.
+    *
+    * @param  Boolean Enables or Disables the billing scheduler
+    * @return Object : {
+    *                   nextBillDate : Date     Date of the next billings
+    *                   cronEvtSet   : Boolean  Flag that shows if the Scheduler is set  
+    *                  }
+    */
+    fun schedulePays(alive: Boolean) : BSResult {
         val bs: BSResult = BSResult()
         if (alive) {
-            if (!isTimerSet) {
-                bs.nextBillDate = setNextPaymentsTimer().toString()
-                bs.cronEvtSet = isTimerSet
+            if (!scheduler.getIsSchedulerSet()) {
+                scheduler.start().schedule( scheduler.getNextBillingDate() ) {processAllPayments()}
+                
+                bs.nextBillDate = scheduler.getNextBillingDate().toString()
+                bs.cronEvtSet   = scheduler.getIsSchedulerSet()
             }
         } else if (!alive) {
-            timer.cancel()
-            isTimerSet = false
+            scheduler.stop()
         }
         return bs
+    }
+
+
+    /**
+    * This function is the entry point of the class to process all pending transactions
+    *
+    * @return Boolean true  If there are still pending payments
+    *                 false If there are no pending payments left
+    */
+    fun forcePendingPays() : Boolean {
+        if (missingPayments) (
+            processAllPendingPayments()
+        )
+        return missingPayments
     }
 }

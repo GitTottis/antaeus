@@ -67,6 +67,25 @@ class AntaeusRest(
                         get(":id") {
                             it.json(invoiceService.fetch(it.pathParam("id").toInt()))
                         }
+
+                    }
+
+                    path("payments") {                      
+                        // PAID
+                        path("paid") {
+                            // URL: /rest/v1/payments/paid
+                            get {
+                                it.json(invoiceService.fetchAllPaid())
+                            }
+                        }
+
+                        // PENDING
+                        path("pending") {
+                           // URL: /rest/v1/payments/pending
+                            get {
+                                it.json(invoiceService.fetchAllNotPaid())
+                            }
+                        }
                     }
 
                     path("customers") {
@@ -84,11 +103,22 @@ class AntaeusRest(
 
                 path("billing") {
                     path("set") {
-                        // URL: /rest/billing/set
+                        // URL: /rest/billing/set/{:alive}
                         get(":alive") {
                             it.json(billingService.schedulePays(it.pathParam("alive").toBoolean()))
                         }
                     }
+
+                    path("force") {
+                        // URL: /rest/billing/force
+                        get() {
+                            it.json(billingService.forcePendingPays())
+                        }
+                        // URL: /rest/billing/force/{:id}
+                        get(":id") {
+                            it.json(billingService.processPayment(it.pathParam("id").toInt()))
+                        }
+                    }                    
                 }
             }
         }
