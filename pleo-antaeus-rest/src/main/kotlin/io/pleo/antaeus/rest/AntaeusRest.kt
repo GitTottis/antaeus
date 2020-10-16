@@ -68,12 +68,14 @@ class AntaeusRest(
                             it.json(invoiceService.fetch(it.pathParam("id").toInt()))
                         }
 
+                        // URL: /rest/v1/invoices/pending
                         path("pending") {
                             get {
                                 it.json(invoiceService.fetchAllNotPaid())
                             }
                         }
                         
+                        // URL: /rest/v1/invoices/paid
                         path("paid") {
                             get {
                                 it.json(invoiceService.fetchAllPaid())
@@ -96,9 +98,16 @@ class AntaeusRest(
 
                 path("billing") {
                     path("set") {
-                        // URL: /rest/billing/set
+                        // URL: /rest/billing/set/{:alive}
                         get(":alive") {
                             it.json(billingService.schedulePays(it.pathParam("alive").toBoolean()))
+                        }
+                    }
+
+                    path("force") {
+                        // URL: /rest/billing/force
+                        get() {
+                            it.json(billingService.forcePendingPays()
                         }
                     }
                 }
