@@ -12,11 +12,13 @@ class CoreLogger() {
     /**
     * Returns log message
     *
+    * Notice: Debug mode has to be activated in KotlinLogging
+    *
     * @param msg This is the custom `log` message
     * @returns String The log output
     */
-    fun log(msg: String): String {
-        return intro + "Log :" + msg
+    fun log(msg: String) {
+        logger.debug( "$intro Log: $msg" )
     }
 
     /**
@@ -25,18 +27,8 @@ class CoreLogger() {
     * @param msg This is the custom `info` message
     * @returns String The info output
     */    
-    fun info(msg: String): String {
-        return intro + "Info :" + msg
-    }
-
-    /**
-    * Returns debug message
-    *
-    * @param msg This is the custom `debug` message
-    * @returns String The debug output
-    */
-    fun debug(msg: String): String {
-        return intro + "Debug :" + msg
+    fun info(msg: String) {
+        logger.info(intro + "Info : " + msg)
     }
 
     /**
@@ -45,7 +37,7 @@ class CoreLogger() {
     * @param msg This is the custom `error` message
     * @returns String The error output
     */
-    fun error(msg: String): String {
-        return intro + "Error :" + msg
+    fun error(e : Exception, msg: String) {
+        logger.info(intro + "Error : " + e + " : " + msg)
     }
 }

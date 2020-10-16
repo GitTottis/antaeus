@@ -56,7 +56,7 @@ class BillingService(
             }
         }
         catch (e: PaymentsProcessException) {
-            logger.error("BS: Payments process not finished")
+            logger.error(e, "BS: Payments process not finished")
         }
         finally {
             logger.info("BS: Subscriptions paid")
@@ -82,7 +82,7 @@ class BillingService(
             }
         }
         catch (e: PaymentsProcessException) {
-            logger.error("BS: Payments process not finished")
+            logger.error(e, "BS: Payments process not finished")
         }
         finally {
             logger.info("BS: Pending subscriptions were paid")
@@ -91,14 +91,18 @@ class BillingService(
 
 
     /**
-    * This function tries to process a single invoice payment
+    * This function tries to process a single invoice payment. It manages the errors
+    * that can potentially be thrown by the PaymentProvider Class and log them. Error
+    * handlin is crucial here since we do not want the process to interrupt 
+    *
+    * Errors Handled:
+    * CustomerNotFoundException when invalid customer is set in the Invoice
+    * CurrencyMismatchException when invalid currency is set in the Invoice
+    * NetworkException when Network error occured when charging the client 
     *
     * @param  Invoice to be processed
     * @return Boolean true  : payment was successfully processed
     *                 false : payment was not processed
-    * @throws CustomerNotFoundException when invalid customer is set in the Invoice
-    * @throws CurrencyMismatchException when invalid currency is set in the Invoice
-    * @throws NetworkException when Network error occured when charging the client
     */
     fun processPayment(invoice: Invoice) : Boolean {
         var processed: Boolean = false
@@ -107,13 +111,13 @@ class BillingService(
             processed = true
         }
         catch (e: CustomerNotFoundException) {
-            logger.error("BS: Customer ${invoice.customerId} not found")
+            logger.error(e, "BS: Customer ${invoice.customerId} not found")
         }
         catch (e: CurrencyMismatchException) {
-            logger.error("BS: Currency ${invoice.amount.currency} is not valid")
+            logger.error(e, "BS: Currency ${invoice.amount.currency} is not valid")
         }
         catch (e: NetworkException) {
-            logger.error("BS: Network is down")
+            logger.error(e, "BS: Network is down")
         }
         finally {
             if (!missingPayments && invoice.status != InvoiceStatus.PAID) {
