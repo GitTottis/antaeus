@@ -61,26 +61,6 @@ class BillingService(
         return date
     }
 
-    private fun processPayment(invoice: Invoice) {
-        try {
-            paymentProvider.charge(invoice)
-        }
-        catch (e: CustomerNotFoundException) {
-            logger.error("Customer ${invoice.customerId} not found")
-        }
-        catch (e: CurrencyMismatchException) {
-            logger.error("Currency ${invoice.amount.currency} is not valid")
-        }
-        catch (e: NetworkException) {
-            logger.error("Network is down")
-        }
-        finally {
-            if (!missingPayments && invoice.status != InvoiceStatus.PAID) {
-                missingPayments = true
-            }
-        }
-    }
-
     // Flow of Invoices to be consumed by the PaymentProvider
     private fun emitCustomerInvoices() = invoiceService.fetchAll().asFlow()
     private fun processAllPayments() {
@@ -93,7 +73,11 @@ class BillingService(
                         processPayment(it)
                     }
             }
-        } finally {
+        }
+        catch (e: PaymentsProcessException) {
+            logger.error("BS: Payments process not finished")
+        }
+        finally {
             logger.info("BS: Subscriptions paid")
             setNextPaymentsTimer(getNextBillingDate())
         }
@@ -111,9 +95,36 @@ class BillingService(
                         processPayment(it)
                     }
             }
-        } finally {
+        }
+        catch (e: PaymentsProcessException) {
+            logger.error("BS: Payments process not finished")
+        }
+        finally {
             logger.info("BS: Pending subscriptions were paid")
         }
+    }
+
+    fun processPayment(invoice: Invoice) : Boolean {
+        var processed: Boolean = false
+        try {
+            paymentProvider.charge(invoice)
+            processed = true
+        }
+        catch (e: CustomerNotFoundException) {
+            logger.error("BS: Customer ${invoice.customerId} not found")
+        }
+        catch (e: CurrencyMismatchException) {
+            logger.error("BS: Currency ${invoice.amount.currency} is not valid")
+        }
+        catch (e: NetworkException) {
+            logger.error("BS: Network is down")
+        }
+        finally {
+            if (!missingPayments && invoice.status != InvoiceStatus.PAID) {
+                missingPayments = true
+            }
+        }
+        return processed
     }
 
     fun schedulePays(alive: Boolean) : BSResult {

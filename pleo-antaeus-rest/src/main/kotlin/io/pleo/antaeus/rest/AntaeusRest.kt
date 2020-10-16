@@ -107,7 +107,7 @@ class AntaeusRest(
                     path("force") {
                         // URL: /rest/billing/force
                         get() {
-                            it.json(billingService.forcePendingPays()
+                            it.json(billingService.forcePendingPays())
                         }
                     }
                 }
